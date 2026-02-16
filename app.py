@@ -20,7 +20,7 @@ app = Flask(__name__)
 app.secret_key = os.environ.get("SECRET_KEY", "cherax_web_key_2026")
 
 # ==================== DISCORD WEBHOOK & COUNTER ====================
-DISCORD_WEBHOOK_URL = os.environ.get("DISCORD_WEBHOOK", "")  # Aus Environment Variable, nicht hardcoded!
+DISCORD_WEBHOOK_URL = os.environ.get("DISCORD_WEBHOOK", "")
 COUNTER_FILE = "cherax_translation_counter.json"
 
 def load_counter():
@@ -238,7 +238,13 @@ def translate_with_sse(data, target_lang, target_lang_name):
         global translation_count
         translation_count += 1
         save_counter(translation_count)
-        send_milestone_webhook(translation_count)
+        
+        # Webhook asynchron senden (blockiert nicht den Stream!)
+        threading.Thread(
+            target=send_milestone_webhook, 
+            args=(translation_count,), 
+            daemon=True
+        ).start()
         # ==================== END WEBHOOK ====================
         
         yield log_message('info', '=' * 60)
