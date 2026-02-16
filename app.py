@@ -12,7 +12,7 @@ import time
 import uuid
 import threading
 import requests
-import psycopg2
+import psycopg
 from psycopg2.extras import RealDictCursor
 from datetime import datetime, timedelta
 from flask import Flask, render_template, request, send_file, jsonify, Response
@@ -71,7 +71,7 @@ DATABASE_URL = os.environ.get("DATABASE_URL", "")
 def get_db_connection():
     """Verbindung zur PostgreSQL DB"""
     try:
-        conn = psycopg2.connect(DATABASE_URL)
+        conn = psycopg.connect(DATABASE_URL)
         return conn
     except Exception as e:
         print(f"❌ DB Connection Error: {e}")
@@ -512,3 +512,4 @@ if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
     print(f"🚀 Cherax Translator starting... (Total translations: {translation_count})")
     app.run(host='0.0.0.0', port=port, debug=False)
+
