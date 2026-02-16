@@ -11,12 +11,80 @@ import io
 import time
 import uuid
 import threading
+import requests
 from datetime import datetime, timedelta
 from flask import Flask, render_template, request, send_file, jsonify, Response, session
 from deep_translator import GoogleTranslator
 
 app = Flask(__name__)
 app.secret_key = os.environ.get("SECRET_KEY", "cherax_web_key_2026")
+
+# ==================== DISCORD WEBHOOK & COUNTER ====================
+DISCORD_WEBHOOK_URL = os.environ.get("DISCORD_WEBHOOK", "")  # Aus Environment Variable, nicht hardcoded!
+COUNTER_FILE = "cherax_translation_counter.json"
+
+def load_counter():
+    """Lädt Counter aus Datei (persistent)"""
+    try:
+        if os.path.exists(COUNTER_FILE):
+            with open(COUNTER_FILE, 'r') as f:
+                data = json.load(f)
+                return data.get('count', 0)
+    except Exception as e:
+        print(f"⚠ Counter load error: {e}")
+    return 0
+
+def save_counter(count):
+    """Speichert Counter in Datei"""
+    try:
+        with open(COUNTER_FILE, 'w') as f:
+            json.dump({'count': count, 'last_updated': datetime.now().isoformat()}, f)
+    except Exception as e:
+        print(f"⚠ Counter save error: {e}")
+
+# Globaler Counter laden
+translation_count = load_counter()
+
+def send_milestone_webhook(count):
+    """Sendet Discord Notification bei Milestones"""
+    milestones = [10, 25, 50, 100, 250, 500, 750, 1000, 2500, 5000]
+    
+    if count not in milestones or not DISCORD_WEBHOOK_URL:
+        return
+    
+    embed = {
+        "embeds": [{
+            "title": "🚀 Cherax Translator - Milestone Reached!",
+            "description": f"**{count} translations completed!** 🎉",
+            "color": 4287245,  # Blau
+            "fields": [
+                {
+                    "name": "📊 Total Translations",
+                    "value": f"**{count}**",
+                    "inline": True
+                },
+                {
+                    "name": "⏰ Time",
+                    "value": datetime.now().strftime("%d.%m.%Y %H:%M CET"),
+                    "inline": True
+                }
+            ],
+            "footer": {
+                "text": "Cherax Translator • Created by Stefc3"
+            },
+            "timestamp": datetime.utcnow().isoformat()
+        }]
+    }
+    
+    try:
+        response = requests.post(DISCORD_WEBHOOK_URL, json=embed, timeout=5)
+        if response.status_code == 204:
+            print(f"✅ Milestone webhook sent: {count}")
+        else:
+            print(f"⚠ Webhook response: {response.status_code}")
+    except Exception as e:
+        print(f"⚠ Webhook failed: {e}")
+# ==================== END WEBHOOK ====================
 
 # Vollständige 56-Sprachen-Liste aus dem Original-Skript
 LANGUAGES = {
@@ -166,6 +234,13 @@ def translate_with_sse(data, target_lang, target_lang_name):
             'timestamp': datetime.now()
         }
         
+        # ==================== WEBHOOK & COUNTER ====================
+        global translation_count
+        translation_count += 1
+        save_counter(translation_count)
+        send_milestone_webhook(translation_count)
+        # ==================== END WEBHOOK ====================
+        
         yield log_message('info', '=' * 60)
         yield log_message('success', '✅ ÜBERSETZUNG ABGESCHLOSSEN!')
         yield log_message('info', f'📊 {total_items}/{total_items} Einträge übersetzt')
@@ -260,9 +335,11 @@ def health():
     return jsonify({
         'status': 'ok', 
         'languages': len(LANGUAGES),
-        'cached_files': len(translated_files)
+        'cached_files': len(translated_files),
+        'total_translations': translation_count
     }), 200
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
+    print(f"🚀 Cherax Translator starting... (Total translations: {translation_count})")
     app.run(host='0.0.0.0', port=port, debug=False)
