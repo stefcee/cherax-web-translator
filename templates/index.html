@@ -1,0 +1,818 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cherax Web Translator</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #0f0c29, #302b63, #24243e);
+            color: white;
+            padding: 20px;
+            min-height: 100vh;
+        }
+        
+        .page-wrapper {
+            max-width: 1400px;
+            margin: 0 auto;
+            display: flex;
+            gap: 30px;
+            justify-content: center;
+            align-items: flex-start;
+        }
+        
+        .main-content {
+            flex: 1;
+            max-width: 800px;
+        }
+        
+        .discord-sidebar {
+            width: 350px;
+            position: sticky;
+            top: 20px;
+            flex-shrink: 0;
+        }
+        
+        .discord-widget {
+            border-radius: 15px;
+            overflow: hidden;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+        }
+        
+        @media (max-width: 1200px) {
+            .page-wrapper { 
+                flex-direction: column; 
+                align-items: center;
+            }
+            .discord-sidebar { 
+                width: 100%; 
+                position: relative; 
+                max-width: 500px;
+            }
+        }
+        
+        .card {
+            background: rgba(30, 30, 30, 0.95);
+            padding: 40px;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            margin-bottom: 20px;
+        }
+        
+        .header {
+            text-align: center;
+            margin-bottom: 30px;
+            position: relative;
+            padding-top: 50px; /* FIX: Platz für die Buttons */
+        }
+        
+        .lang-switcher {
+            position: absolute;
+            top: 0;
+            right: 0;
+            display: flex;
+            gap: 5px;
+            background: rgba(255, 255, 255, 0.05);
+            padding: 5px;
+            border-radius: 10px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            z-index: 10; /* FIX: Über allem */
+        }
+        
+        .lang-btn {
+            padding: 8px 16px;
+            background: transparent;
+            border: none;
+            color: #aaa;
+            cursor: pointer;
+            border-radius: 8px;
+            font-weight: 600;
+            transition: all 0.3s;
+            font-size: 0.9em;
+            white-space: nowrap; /* FIX: Kein Zeilenumbruch */
+        }
+        
+        .lang-btn:hover {
+            background: rgba(255, 255, 255, 0.1);
+            color: white;
+        }
+        
+        .lang-btn.active {
+            background: linear-gradient(45deg, #667eea, #764ba2);
+            color: white;
+        }
+        
+        @media (max-width: 600px) {
+            .header {
+                padding-top: 0; /* Mobile: Kein extra Padding */
+            }
+            
+            .lang-switcher {
+                position: relative;
+                margin-bottom: 15px;
+                justify-content: center;
+                right: auto;
+                top: auto;
+            }
+        }
+        
+        .header h1 {
+            font-size: 2.2em;
+            margin-bottom: 10px;
+            background: linear-gradient(45deg, #667eea, #764ba2);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+        
+        .header p {
+            color: #aaa;
+            font-size: 0.95em;
+        }
+        
+        .info-box {
+            background: rgba(66, 135, 245, 0.1);
+            border-left: 4px solid #4287f5;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 25px;
+            font-size: 0.9em;
+            line-height: 1.7;
+        }
+        
+        .info-box strong {
+            color: #4287f5;
+            display: block;
+            margin-bottom: 8px;
+        }
+        
+        .info-box code {
+            background: rgba(0, 0, 0, 0.4);
+            padding: 4px 10px;
+            border-radius: 4px;
+            font-family: 'Courier New', monospace;
+            font-size: 0.9em;
+            color: #4af;
+            display: inline-block;
+            margin: 5px 0;
+        }
+        
+        .form-group {
+            margin-bottom: 20px;
+        }
+        
+        label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 600;
+            color: #ddd;
+            font-size: 0.95em;
+        }
+        
+        .file-upload-area {
+            width: 100%;
+            padding: 40px;
+            background: rgba(255, 255, 255, 0.05);
+            border: 3px dashed rgba(255, 255, 255, 0.3);
+            border-radius: 15px;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.3s;
+            position: relative;
+        }
+        
+        .file-upload-area:hover,
+        .file-upload-area.dragover {
+            border-color: #667eea;
+            background: rgba(102, 126, 234, 0.15);
+            transform: scale(1.02);
+        }
+        
+        .file-upload-area.has-file {
+            border-color: #4caf50;
+            background: rgba(76, 175, 80, 0.1);
+        }
+        
+        .upload-icon {
+            font-size: 3em;
+            margin-bottom: 10px;
+        }
+        
+        .upload-text {
+            color: #aaa;
+            font-size: 0.9em;
+        }
+        
+        .file-name {
+            color: #4caf50;
+            font-weight: bold;
+            margin-top: 10px;
+            font-size: 1em;
+        }
+        
+        #fileInput {
+            display: none;
+        }
+        
+        .language-search-wrapper {
+            position: relative;
+            margin-bottom: 10px;
+        }
+        
+        .language-search {
+            width: 100%;
+            padding: 12px;
+            background: rgba(255, 255, 255, 0.05);
+            border: 2px solid rgba(255, 255, 255, 0.2);
+            border-radius: 10px;
+            color: #fff;
+            font-size: 1em;
+            transition: all 0.3s;
+        }
+        
+        .language-search:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+        
+        .language-search::placeholder {
+            color: rgba(255, 255, 255, 0.4);
+        }
+        
+        select {
+            width: 100%;
+            padding: 12px;
+            background: rgba(255, 255, 255, 0.05);
+            border: 2px solid rgba(255, 255, 255, 0.2);
+            border-radius: 10px;
+            color: #fff;
+            cursor: pointer;
+            font-size: 1em;
+            max-height: 200px;
+            transition: all 0.3s;
+        }
+        
+        select:hover, select:focus {
+            border-color: #667eea;
+            outline: none;
+        }
+        
+        select option {
+            background: #1e1e1e;
+            color: #fff;
+            padding: 10px;
+        }
+        
+        .btn {
+            width: 100%;
+            padding: 16px;
+            background: linear-gradient(45deg, #667eea, #764ba2);
+            border: none;
+            border-radius: 10px;
+            color: #fff;
+            font-size: 1.1em;
+            font-weight: 700;
+            cursor: pointer;
+            transition: all 0.3s;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+        
+        .btn:hover:not(:disabled) {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 30px rgba(102, 126, 234, 0.5);
+        }
+        
+        .btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+        
+        .log-container {
+            display: none;
+            margin-top: 20px;
+        }
+        
+        .log-box {
+            background: #0a0a0a;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 10px;
+            padding: 15px;
+            max-height: 400px;
+            overflow-y: auto;
+            font-family: 'Consolas', 'Courier New', monospace;
+            font-size: 0.85em;
+            line-height: 1.6;
+        }
+        
+        .log-box::-webkit-scrollbar {
+            width: 8px;
+        }
+        
+        .log-box::-webkit-scrollbar-track {
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 10px;
+        }
+        
+        .log-box::-webkit-scrollbar-thumb {
+            background: rgba(102, 126, 234, 0.5);
+            border-radius: 10px;
+        }
+        
+        .log-entry {
+            margin-bottom: 4px;
+            padding: 2px 0;
+        }
+        
+        .log-info { color: #aaa; }
+        .log-success { color: #4caf50; font-weight: bold; }
+        .log-warning { color: #ff9800; }
+        .log-error { color: #f44336; }
+        .log-progress { color: #2196f3; }
+        
+        .progress-bar {
+            width: 100%;
+            height: 10px;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 10px;
+            overflow: hidden;
+            margin-top: 15px;
+        }
+        
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(45deg, #667eea, #764ba2);
+            width: 0%;
+            transition: width 0.5s ease;
+        }
+        
+        .download-btn {
+            display: none;
+            margin-top: 20px;
+            padding: 15px;
+            background: linear-gradient(45deg, #4caf50, #45a049);
+            border: none;
+            border-radius: 10px;
+            color: white;
+            font-size: 1.1em;
+            font-weight: bold;
+            cursor: pointer;
+            width: 100%;
+            transition: all 0.3s;
+        }
+        
+        .download-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 30px rgba(76, 175, 80, 0.4);
+        }
+        
+        .footer {
+            text-align: center;
+            margin-top: 30px;
+            padding: 25px;
+            background: rgba(30, 30, 30, 0.95);
+            border-radius: 20px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        
+        .footer p {
+            margin-bottom: 15px;
+            color: #aaa;
+            font-size: 0.95em;
+        }
+        
+        .footer-buttons {
+            display: flex;
+            gap: 15px;
+            justify-content: center;
+            flex-wrap: wrap;
+        }
+        
+        .footer-btn {
+            padding: 12px 30px;
+            border-radius: 10px;
+            text-decoration: none;
+            font-weight: 600;
+            transition: all 0.3s;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 0.95em;
+        }
+        
+        .discord-btn {
+            background: #5865F2;
+            color: white;
+        }
+        
+        .discord-btn:hover {
+            background: #4752C4;
+            transform: translateY(-2px);
+            box-shadow: 0 8px 20px rgba(88, 101, 242, 0.4);
+        }
+        
+        .github-btn {
+            background: #24292e;
+            color: white;
+        }
+        
+        .github-btn:hover {
+            background: #1a1e22;
+            transform: translateY(-2px);
+            box-shadow: 0 8px 20px rgba(36, 41, 46, 0.4);
+        }
+    </style>
+</head>
+<body>
+    <div class="page-wrapper">
+        <div class="main-content">
+            <div class="card">
+                <div class="header">
+                    <div class="lang-switcher">
+                        <button class="lang-btn active" data-lang="de">🇩🇪 DE</button>
+                        <button class="lang-btn" data-lang="en">🇬🇧 EN</button>
+                    </div>
+                    <h1>🚀 Cherax Web Translator</h1>
+                    <p data-translate="subtitle">Created by Stefc3 • 56 Sprachen • Live-Übersetzung</p>
+                </div>
+                
+                <div class="info-box">
+                    <strong data-translate="info-title">📁 Wo finde ich meine Cherax-Sprachdatei?</strong>
+                    <span data-translate="info-path">Pfad zur Quelldatei:</span> <code>\\Documents\\Cherax\\Translations\\TranslationFile.json</code>
+                    <br><small style="color: #888;" data-translate="info-desc">Diese Datei wird in deine gewünschte Sprache übersetzt.</small>
+                </div>
+                
+                <form id="translateForm">
+                    <div class="form-group">
+                        <label data-translate="label-file">📄 TranslationFile.json auswählen</label>
+                        <div class="file-upload-area" id="dropArea">
+                            <div class="upload-icon">📁</div>
+                            <div class="upload-text">
+                                <span data-translate="upload-text">Datei hier ablegen oder klicken zum Auswählen</span><br>
+                                <small data-translate="upload-limit">Max. 5MB • JSON Format</small>
+                            </div>
+                            <div class="file-name" id="fileName" style="display: none;"></div>
+                        </div>
+                        <input type="file" id="fileInput" name="file" accept=".json" required>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label data-translate="label-lang">🌐 Zielsprache</label>
+                        <div class="language-search-wrapper">
+                            <input type="text" 
+                                   class="language-search" 
+                                   id="languageSearch" 
+                                   data-translate-placeholder="search-lang"
+                                   placeholder="🔍 Sprache suchen... (z.B. German, Spanish)"
+                                   autocomplete="off">
+                        </div>
+                        <select id="languageSelect" name="language" required size="8">
+                            {% for lang in languages %}
+                            <option value="{{ lang }}" {% if lang == "German" %}selected{% endif %}>{{ lang }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    
+                    <button type="submit" class="btn" id="submitBtn" data-translate="btn-start">▶ Übersetzen starten</button>
+                </form>
+                
+                <div class="log-container" id="logContainer">
+                    <div class="log-box" id="logBox"></div>
+                    <div class="progress-bar">
+                        <div class="progress-fill" id="progressFill"></div>
+                    </div>
+                    <button class="download-btn" id="downloadBtn" data-translate="btn-download">📥 Übersetzung herunterladen</button>
+                </div>
+            </div>
+            
+            <div class="footer">
+                <p><strong>Created by Stefc3</strong></p>
+                <div class="footer-buttons">
+                    <a href="https://dc.gg/chatify" target="_blank" class="footer-btn discord-btn">
+                        💬 Discord Community
+                    </a>
+                    <a href="https://github.com/stefcee" target="_blank" class="footer-btn github-btn">
+                        ⭐ GitHub Profile
+                    </a>
+                </div>
+            </div>
+        </div>
+        
+        <div class="discord-sidebar">
+            <div class="discord-widget">
+                <iframe src="https://discord.com/widget?id=1420497561151733900&theme=dark" 
+                        width="350" 
+                        height="500" 
+                        allowtransparency="true" 
+                        frameborder="0" 
+                        sandbox="allow-popups allow-popups-to-escape-sandbox allow-same-origin allow-scripts">
+                </iframe>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        // ==================== ÜBERSETZUNGEN ====================
+        
+        const translations = {
+            de: {
+                'subtitle': 'Created by Stefc3 • 56 Sprachen • Live-Übersetzung',
+                'info-title': '📁 Wo finde ich meine Cherax-Sprachdatei?',
+                'info-path': 'Pfad zur Quelldatei:',
+                'info-desc': 'Diese Datei wird in deine gewünschte Sprache übersetzt.',
+                'label-file': '📄 TranslationFile.json auswählen',
+                'upload-text': 'Datei hier ablegen oder klicken zum Auswählen',
+                'upload-limit': 'Max. 5MB • JSON Format',
+                'label-lang': '🌐 Zielsprache',
+                'search-lang': '🔍 Sprache suchen... (z.B. German, Spanish)',
+                'btn-start': '▶ Übersetzen starten',
+                'btn-download': '📥 Übersetzung herunterladen',
+                'alert-no-file': 'Bitte wähle die TranslationFile.json aus!',
+                'log-connecting': '🔄 Verbindung wird aufgebaut...',
+                'log-stream-end': 'Stream beendet',
+                'log-error': '❌ Fehler:',
+                'log-download': '📥 Download gestartet!'
+            },
+            en: {
+                'subtitle': 'Created by Stefc3 • 56 Languages • Live Translation',
+                'info-title': '📁 Where can I find my Cherax language file?',
+                'info-path': 'Path to source file:',
+                'info-desc': 'This file will be translated into your desired language.',
+                'label-file': '📄 Select TranslationFile.json',
+                'upload-text': 'Drop file here or click to select',
+                'upload-limit': 'Max. 5MB • JSON Format',
+                'label-lang': '🌐 Target Language',
+                'search-lang': '🔍 Search language... (e.g. German, Spanish)',
+                'btn-start': '▶ Start Translation',
+                'btn-download': '📥 Download Translation',
+                'alert-no-file': 'Please select TranslationFile.json!',
+                'log-connecting': '🔄 Connecting...',
+                'log-stream-end': 'Stream finished',
+                'log-error': '❌ Error:',
+                'log-download': '📥 Download started!'
+            }
+        };
+        
+        let currentLang = localStorage.getItem('uiLanguage') || 'de';
+        
+        function switchLanguage(lang) {
+            currentLang = lang;
+            localStorage.setItem('uiLanguage', lang);
+            
+            // Buttons aktualisieren
+            document.querySelectorAll('.lang-btn').forEach(btn => {
+                btn.classList.remove('active');
+                if (btn.dataset.lang === lang) {
+                    btn.classList.add('active');
+                }
+            });
+            
+            // Texte übersetzen
+            document.querySelectorAll('[data-translate]').forEach(el => {
+                const key = el.dataset.translate;
+                if (translations[lang][key]) {
+                    el.textContent = translations[lang][key];
+                }
+            });
+            
+            // Placeholder übersetzen
+            document.querySelectorAll('[data-translate-placeholder]').forEach(el => {
+                const key = el.dataset.translatePlaceholder;
+                if (translations[lang][key]) {
+                    el.placeholder = translations[lang][key];
+                }
+            });
+        }
+        
+        // Language Switcher Event
+        document.querySelectorAll('.lang-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                switchLanguage(btn.dataset.lang);
+            });
+        });
+        
+        // Initiale Sprache setzen
+        switchLanguage(currentLang);
+        
+        // ==================== REST DES CODES ====================
+        
+        const form = document.getElementById('translateForm');
+        const submitBtn = document.getElementById('submitBtn');
+        const logContainer = document.getElementById('logContainer');
+        const logBox = document.getElementById('logBox');
+        const progressFill = document.getElementById('progressFill');
+        const downloadBtn = document.getElementById('downloadBtn');
+        const fileInput = document.getElementById('fileInput');
+        const dropArea = document.getElementById('dropArea');
+        const fileName = document.getElementById('fileName');
+        const languageSelect = document.getElementById('languageSelect');
+        const languageSearch = document.getElementById('languageSearch');
+        
+        let currentFileId = null;
+        let currentLangCode = null;
+        
+        // ==================== DRAG & DROP ====================
+        
+        ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+            dropArea.addEventListener(eventName, preventDefaults, false);
+        });
+        
+        function preventDefaults(e) {
+            e.preventDefault();
+            e.stopPropagation();
+        }
+        
+        ['dragenter', 'dragover'].forEach(eventName => {
+            dropArea.addEventListener(eventName, () => {
+                dropArea.classList.add('dragover');
+            }, false);
+        });
+        
+        ['dragleave', 'drop'].forEach(eventName => {
+            dropArea.addEventListener(eventName, () => {
+                dropArea.classList.remove('dragover');
+            }, false);
+        });
+        
+        dropArea.addEventListener('drop', (e) => {
+            const dt = e.dataTransfer;
+            const files = dt.files;
+            
+            if (files.length > 0) {
+                fileInput.files = files;
+                updateFileName(files[0].name);
+            }
+        });
+        
+        dropArea.addEventListener('click', () => {
+            fileInput.click();
+        });
+        
+        fileInput.addEventListener('change', (e) => {
+            if (e.target.files.length > 0) {
+                updateFileName(e.target.files[0].name);
+            }
+        });
+        
+        function updateFileName(name) {
+            fileName.textContent = `✓ ${name}`;
+            fileName.style.display = 'block';
+            dropArea.classList.add('has-file');
+            dropArea.querySelector('.upload-text').style.display = 'none';
+            dropArea.querySelector('.upload-icon').textContent = '✓';
+        }
+        
+        // ==================== SPRACHSUCHE ====================
+        
+        const allOptions = Array.from(languageSelect.options);
+        
+        languageSearch.addEventListener('input', (e) => {
+            const searchTerm = e.target.value.toLowerCase();
+            
+            const filtered = allOptions.filter(option => 
+                option.value.toLowerCase().includes(searchTerm)
+            );
+            
+            languageSelect.innerHTML = '';
+            filtered.forEach(option => {
+                languageSelect.appendChild(option.cloneNode(true));
+            });
+            
+            if (filtered.length > 0) {
+                languageSelect.selectedIndex = 0;
+            }
+            
+            if (filtered.length === 0) {
+                allOptions.forEach(option => {
+                    languageSelect.appendChild(option.cloneNode(true));
+                });
+            }
+        });
+        
+        const lastLang = localStorage.getItem('lastLanguage');
+        if (lastLang && languageSelect.querySelector(`option[value="${lastLang}"]`)) {
+            languageSelect.value = lastLang;
+        }
+        
+        // ==================== FORM SUBMIT ====================
+        
+        form.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            if (!fileInput.files[0]) {
+                alert(translations[currentLang]['alert-no-file']);
+                return;
+            }
+            
+            localStorage.setItem('lastLanguage', languageSelect.value);
+            
+            submitBtn.disabled = true;
+            submitBtn.textContent = '⏳ ' + (currentLang === 'de' ? 'Übersetzung läuft...' : 'Translating...');
+            logContainer.style.display = 'block';
+            logBox.innerHTML = '';
+            progressFill.style.width = '0%';
+            downloadBtn.style.display = 'none';
+            
+            addLog('info', translations[currentLang]['log-connecting']);
+            
+            const formData = new FormData();
+            formData.append('file', fileInput.files[0]);
+            formData.append('language', languageSelect.value);
+            
+            try {
+                const response = await fetch('/translate', {
+                    method: 'POST',
+                    body: formData
+                });
+                
+                if (!response.ok) {
+                    const errorData = await response.json();
+                    throw new Error(errorData.error || 'Server error');
+                }
+                
+                const reader = response.body.getReader();
+                const decoder = new TextDecoder('utf-8');
+                let buffer = '';
+                
+                while (true) {
+                    const { done, value } = await reader.read();
+                    
+                    if (done) {
+                        console.log(translations[currentLang]['log-stream-end']);
+                        break;
+                    }
+                    
+                    buffer += decoder.decode(value, { stream: true });
+                    
+                    const lines = buffer.split('\n');
+                    buffer = lines.pop();
+                    
+                    for (const line of lines) {
+                        if (line.startsWith('data: ')) {
+                            try {
+                                const jsonData = line.substring(6).trim();
+                                if (jsonData) {
+                                    const data = JSON.parse(jsonData);
+                                    handleSSEMessage(data);
+                                }
+                            } catch (err) {
+                                console.error('JSON Parse Error:', err, line);
+                            }
+                        }
+                    }
+                }
+                
+            } catch (error) {
+                console.error('Error:', error);
+                addLog('error', translations[currentLang]['log-error'] + ' ' + error.message);
+                submitBtn.disabled = false;
+                submitBtn.textContent = translations[currentLang]['btn-start'];
+            }
+        });
+        
+        function handleSSEMessage(data) {
+            switch(data.type) {
+                case 'info':
+                case 'success':
+                case 'warning':
+                case 'error':
+                case 'progress':
+                    addLog(data.type, data.message);
+                    break;
+                    
+                case 'percentage':
+                    progressFill.style.width = data.value + '%';
+                    break;
+                    
+                case 'complete':
+                    currentFileId = data.file_id;
+                    currentLangCode = data.lang_code;
+                    downloadBtn.style.display = 'block';
+                    submitBtn.disabled = false;
+                    submitBtn.textContent = translations[currentLang]['btn-start'];
+                    break;
+            }
+        }
+        
+        function addLog(type, message) {
+            const entry = document.createElement('div');
+            entry.className = `log-entry log-${type}`;
+            entry.textContent = message;
+            logBox.appendChild(entry);
+            logBox.scrollTop = logBox.scrollHeight;
+        }
+        
+        downloadBtn.addEventListener('click', () => {
+            if (currentFileId) {
+                window.location.href = `/download/${currentFileId}`;
+                addLog('success', translations[currentLang]['log-download']);
+            }
+        });
+    </script>
+</body>
+</html>
