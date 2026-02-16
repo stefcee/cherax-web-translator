@@ -12,38 +12,17 @@ import time
 import uuid
 import threading
 import requests
+import psycopg2
+from psycopg2.extras import RealDictCursor
 from datetime import datetime, timedelta
-from flask import Flask, render_template, request, send_file, jsonify, Response, session
+from flask import Flask, render_template, request, send_file, jsonify, Response
 from deep_translator import GoogleTranslator
 
 app = Flask(__name__)
 app.secret_key = os.environ.get("SECRET_KEY", "cherax_web_key_2026")
 
-# ==================== DISCORD WEBHOOK & COUNTER ====================
+# ==================== DISCORD WEBHOOK ====================
 DISCORD_WEBHOOK_URL = os.environ.get("DISCORD_WEBHOOK", "")
-COUNTER_FILE = "cherax_translation_counter.json"
-
-def load_counter():
-    """Lädt Counter aus Datei (persistent)"""
-    try:
-        if os.path.exists(COUNTER_FILE):
-            with open(COUNTER_FILE, 'r') as f:
-                data = json.load(f)
-                return data.get('count', 0)
-    except Exception as e:
-        print(f"⚠ Counter load error: {e}")
-    return 0
-
-def save_counter(count):
-    """Speichert Counter in Datei"""
-    try:
-        with open(COUNTER_FILE, 'w') as f:
-            json.dump({'count': count, 'last_updated': datetime.now().isoformat()}, f)
-    except Exception as e:
-        print(f"⚠ Counter save error: {e}")
-
-# Globaler Counter laden
-translation_count = load_counter()
 
 def send_milestone_webhook(count):
     """Sendet Discord Notification bei Milestones"""
@@ -56,7 +35,7 @@ def send_milestone_webhook(count):
         "embeds": [{
             "title": "🚀 Cherax Translator - Milestone Reached!",
             "description": f"**{count} translations completed!** 🎉",
-            "color": 4287245,  # Blau
+            "color": 4287245,
             "fields": [
                 {
                     "name": "📊 Total Translations",
@@ -86,7 +65,222 @@ def send_milestone_webhook(count):
         print(f"⚠ Webhook failed: {e}")
 # ==================== END WEBHOOK ====================
 
-# Vollständige 56-Sprachen-Liste aus dem Original-Skript
+# ==================== DATABASE ====================
+DATABASE_URL = os.environ.get("DATABASE_URL", "")
+
+def get_db_connection():
+    """Verbindung zur PostgreSQL DB"""
+    try:
+        conn = psycopg2.connect(DATABASE_URL)
+        return conn
+    except Exception as e:
+        print(f"❌ DB Connection Error: {e}")
+        return None
+
+def init_db():
+    """Erstellt Tabellen wenn nicht vorhanden"""
+    conn = get_db_connection()
+    if not conn:
+        print("⚠ No database connection - skipping init")
+        return
+    
+    try:
+        with conn.cursor() as cur:
+            # Counter Tabelle
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS translation_count (
+                    id INTEGER PRIMARY KEY DEFAULT 1,
+                    count INTEGER DEFAULT 0,
+                    last_updated TIMESTAMP DEFAULT NOW()
+                )
+            """)
+            
+            cur.execute("""
+                INSERT INTO translation_count (id, count) 
+                VALUES (1, 0) 
+                ON CONFLICT (id) DO NOTHING
+            """)
+            
+            # Translated Files Tabelle (NEU!)
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS translated_files (
+                    file_id VARCHAR(255) PRIMARY KEY,
+                    data JSONB NOT NULL,
+                    lang_code VARCHAR(50) NOT NULL,
+                    created_at TIMESTAMP DEFAULT NOW(),
+                    downloaded BOOLEAN DEFAULT FALSE,
+                    downloaded_at TIMESTAMP
+                )
+            """)
+            
+            conn.commit()
+            print("✅ Database initialized successfully")
+    except Exception as e:
+        print(f"❌ DB Init Error: {e}")
+    finally:
+        conn.close()
+
+def load_counter():
+    """Lädt Counter aus DB"""
+    conn = get_db_connection()
+    if not conn:
+        print("⚠ No DB connection - using RAM counter (0)")
+        return 0
+    
+    try:
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute("SELECT count FROM translation_count WHERE id = 1")
+            result = cur.fetchone()
+            count = result['count'] if result else 0
+            print(f"✅ Counter loaded from DB: {count}")
+            return count
+    except Exception as e:
+        print(f"❌ Counter Load Error: {e}")
+        return 0
+    finally:
+        conn.close()
+
+def save_counter(count):
+    """Speichert Counter in DB"""
+    conn = get_db_connection()
+    if not conn:
+        print("⚠ No DB connection - counter not saved")
+        return
+    
+    try:
+        with conn.cursor() as cur:
+            cur.execute("""
+                UPDATE translation_count 
+                SET count = %s, last_updated = NOW() 
+                WHERE id = 1
+            """, (count,))
+            conn.commit()
+            print(f"✅ Counter saved to DB: {count}")
+    except Exception as e:
+        print(f"❌ Counter Save Error: {e}")
+    finally:
+        conn.close()
+
+def save_translated_file(file_id, data, lang_code):
+    """Speichert übersetzte Datei in DB"""
+    conn = get_db_connection()
+    if not conn:
+        print("⚠ No DB connection - file not saved")
+        return
+    
+    try:
+        with conn.cursor() as cur:
+            cur.execute("""
+                INSERT INTO translated_files (file_id, data, lang_code)
+                VALUES (%s, %s, %s)
+            """, (file_id, json.dumps(data), lang_code))
+            conn.commit()
+            print(f"✅ File saved to DB: {file_id}")
+    except Exception as e:
+        print(f"❌ File Save Error: {e}")
+    finally:
+        conn.close()
+
+def get_translated_file(file_id):
+    """Lädt übersetzte Datei aus DB"""
+    conn = get_db_connection()
+    if not conn:
+        return None
+    
+    try:
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute("""
+                SELECT data, lang_code, downloaded 
+                FROM translated_files 
+                WHERE file_id = %s
+            """, (file_id,))
+            result = cur.fetchone()
+            
+            if result:
+                print(f"✅ File loaded from DB: {file_id}")
+                return {
+                    'data': result['data'],
+                    'lang_code': result['lang_code'],
+                    'downloaded': result['downloaded']
+                }
+            return None
+    except Exception as e:
+        print(f"❌ File Load Error: {e}")
+        return None
+    finally:
+        conn.close()
+
+def mark_file_downloaded(file_id):
+    """Markiert Datei als downloaded"""
+    conn = get_db_connection()
+    if not conn:
+        return
+    
+    try:
+        with conn.cursor() as cur:
+            cur.execute("""
+                UPDATE translated_files 
+                SET downloaded = TRUE, downloaded_at = NOW()
+                WHERE file_id = %s
+            """, (file_id,))
+            conn.commit()
+            print(f"✅ File marked as downloaded: {file_id}")
+    except Exception as e:
+        print(f"❌ Mark Downloaded Error: {e}")
+    finally:
+        conn.close()
+
+def cleanup_old_files():
+    """
+    Background-Task: Löscht Dateien die:
+    1. Downloaded wurden
+    2. Älter als 1 Stunde sind
+    """
+    while True:
+        try:
+            conn = get_db_connection()
+            if not conn:
+                print("⚠ No DB connection for cleanup")
+                time.sleep(600)
+                continue
+            
+            with conn.cursor() as cur:
+                # Lösche downloaded Files
+                cur.execute("""
+                    DELETE FROM translated_files 
+                    WHERE downloaded = TRUE
+                """)
+                deleted_downloaded = cur.rowcount
+                
+                # Lösche alte Files (älter als 1 Stunde)
+                cur.execute("""
+                    DELETE FROM translated_files 
+                    WHERE created_at < NOW() - INTERVAL '1 hour'
+                """)
+                deleted_old = cur.rowcount
+                
+                conn.commit()
+                
+                if deleted_downloaded > 0 or deleted_old > 0:
+                    print(f"🗑 Cleanup: {deleted_downloaded} downloaded, {deleted_old} old files deleted")
+            
+            conn.close()
+        
+        except Exception as e:
+            print(f"⚠ Cleanup-Fehler: {e}")
+        
+        time.sleep(600)  # Alle 10 Minuten
+
+# Database initialisieren beim Start
+init_db()
+translation_count = load_counter()
+
+# Cleanup-Task starten
+cleanup_thread = threading.Thread(target=cleanup_old_files, daemon=True)
+cleanup_thread.start()
+# ==================== END DATABASE ====================
+
+# Vollständige 56-Sprachen-Liste
 LANGUAGES = {
     "Afrikaans": "af", "Albanian": "sq", "Arabic": "ar", "Armenian": "hy", "Azerbaijani": "az",
     "Basque": "eu", "Belarusian": "be", "Bengali": "bn", "Bulgarian": "bg", "Catalan": "ca",
@@ -103,52 +297,13 @@ LANGUAGES = {
     "Urdu": "ur", "Vietnamese": "vi", "Welsh": "cy", "Yiddish": "yi"
 }
 
-# Temporärer Speicher für übersetzte Dateien mit Timestamp
-translated_files = {}
-
-def cleanup_old_files():
-    """
-    Background-Task: Löscht Dateien älter als 1 Stunde
-    Verhindert Speicher-Overflow auf dem Server
-    """
-    while True:
-        try:
-            now = datetime.now()
-            to_delete = []
-            
-            for file_id, file_data in translated_files.items():
-                if 'timestamp' in file_data:
-                    age = now - file_data['timestamp']
-                    if age > timedelta(hours=1):
-                        to_delete.append(file_id)
-            
-            for file_id in to_delete:
-                del translated_files[file_id]
-                print(f"🗑 Gelöscht: {file_id} (älter als 1 Stunde)")
-            
-            if to_delete:
-                print(f"✅ Cleanup: {len(to_delete)} Dateien gelöscht")
-        
-        except Exception as e:
-            print(f"⚠ Cleanup-Fehler: {e}")
-        
-        # Alle 10 Minuten prüfen
-        time.sleep(600)
-
-# Cleanup-Task im Hintergrund starten
-cleanup_thread = threading.Thread(target=cleanup_old_files, daemon=True)
-cleanup_thread.start()
-
 def log_message(msg_type, text):
     """Erstellt formatierte Log-Nachricht mit Timestamp"""
     timestamp = datetime.now().strftime("%H:%M:%S")
     return f"data: {json.dumps({'type': msg_type, 'message': f'[{timestamp}] {text}'})}\n\n"
 
 def translate_with_sse(data, target_lang, target_lang_name):
-    """
-    Generator-Funktion für Server-Sent Events
-    Sendet Live-Updates während der Übersetzung
-    """
+    """Generator-Funktion für Server-Sent Events"""
     translator = GoogleTranslator(source='auto', target=target_lang)
     translated_data = {}
     keys = list(data.keys())
@@ -156,7 +311,6 @@ def translate_with_sse(data, target_lang, target_lang_name):
     separator = " ||| "
     batch_size = 50
     
-    # Start-Logs
     yield log_message('info', '=' * 60)
     yield log_message('info', '🚀 Übersetzung gestartet...')
     yield log_message('info', f'📊 Gesamt: {total_items} Einträge')
@@ -178,7 +332,6 @@ def translate_with_sse(data, target_lang, target_lang_name):
                 else:
                     translated_data[key] = value
             else:
-                # Batch-Übersetzung
                 batch_texts = [str(data[k]) for k in batch_keys]
                 combined = separator.join(batch_texts)
                 
@@ -189,7 +342,6 @@ def translate_with_sse(data, target_lang, target_lang_name):
                     for idx, key in enumerate(batch_keys):
                         translated_data[key] = parts[idx].strip() if parts[idx].strip() else data[key]
                 else:
-                    # Fallback: Einzelübersetzung
                     yield log_message('warning', '⚠ Batch mismatch, einzelne Übersetzung...')
                     for key in batch_keys:
                         value = str(data[key])
@@ -208,46 +360,39 @@ def translate_with_sse(data, target_lang, target_lang_name):
             progress = len(translated_data)
             percentage = int((progress / total_items) * 100)
             
-            # Progress-Update alle 10 Batches oder bei 100%
             if batch_count % 10 == 0 or progress == total_items:
                 yield log_message('progress', f'⏳ Fortschritt: {progress}/{total_items} ({percentage}%)')
                 yield f"data: {json.dumps({'type': 'percentage', 'value': percentage})}\n\n"
             
-            time.sleep(0.2)  # Rate-Limit-Schutz
+            time.sleep(0.2)
             
         except Exception as e:
             yield log_message('error', f'❌ Fehler: {str(e)}')
             yield log_message('warning', f'⏸ Pausiert bei {len(translated_data)}/{total_items}')
             break
     
-    # Erfolgsmeldung
     if len(translated_data) >= total_items:
-        # Finale Daten zusammenstellen
         final_data = {k: translated_data.get(k, data[k]) for k in data.keys()}
         
-        # Eindeutige ID für Download + Sprachcode + Timestamp speichern
         file_id = str(uuid.uuid4())
         lang_code_upper = target_lang.upper().replace('-', '_')
-        translated_files[file_id] = {
-            'data': final_data,
-            'lang_code': lang_code_upper,
-            'timestamp': datetime.now()
-        }
         
-        print(f"✅ Translation complete - file_id created: {file_id}")
+        # Speichere in PostgreSQL statt RAM!
+        save_translated_file(file_id, final_data, lang_code_upper)
         
-        # ==================== WEBHOOK & COUNTER ====================
+        print(f"✅ Translation complete - file_id: {file_id}")
+        
+        # ==================== COUNTER & WEBHOOK ====================
         global translation_count
         translation_count += 1
         save_counter(translation_count)
         
-        # Webhook asynchron senden (blockiert nicht den Stream!)
         threading.Thread(
             target=send_milestone_webhook, 
             args=(translation_count,), 
             daemon=True
         ).start()
-        # ==================== END WEBHOOK ====================
+        # ==================== END ====================
         
         yield log_message('info', '=' * 60)
         yield log_message('success', '✅ ÜBERSETZUNG ABGESCHLOSSEN!')
@@ -276,15 +421,13 @@ def translate():
         if not target_lang_name or target_lang_name not in LANGUAGES:
             return jsonify({'error': 'Ungültige Sprache'}), 400
         
-        # Dateigrößen-Check (Max 5MB)
         file.seek(0, os.SEEK_END)
         file_size = file.tell()
         file.seek(0)
         
-        if file_size > 5 * 1024 * 1024:  # 5MB
+        if file_size > 5 * 1024 * 1024:
             return jsonify({'error': 'Datei zu groß (max. 5MB)'}), 400
         
-        # JSON laden
         try:
             content = json.load(file)
         except json.JSONDecodeError:
@@ -295,7 +438,6 @@ def translate():
         
         target_code = LANGUAGES[target_lang_name]
         
-        # SSE-Stream starten
         return Response(
             translate_with_sse(content, target_code, target_lang_name),
             mimetype='text/event-stream',
@@ -311,28 +453,28 @@ def translate():
 
 @app.route('/download/<file_id>')
 def download(file_id):
-    """Download der übersetzten Datei"""
+    """Download der übersetzten Datei aus PostgreSQL"""
     print(f"📥 Download request for file_id: {file_id}")
-    print(f"📊 Current cached files: {list(translated_files.keys())}")
     
-    if file_id not in translated_files:
+    # Lade aus PostgreSQL
+    file_info = get_translated_file(file_id)
+    
+    if not file_info:
         print(f"❌ Download failed - file_id not found: {file_id}")
         return jsonify({'error': 'Datei nicht gefunden oder abgelaufen'}), 404
     
     try:
-        file_info = translated_files[file_id]
         data = file_info['data']
         lang_code = file_info['lang_code']
         
         print(f"✅ Download started - file_id: {file_id}, lang: {lang_code}")
         
-        # JSON erstellen
         output = io.BytesIO()
         output.write(json.dumps(data, indent=4, ensure_ascii=False).encode('utf-8'))
         output.seek(0)
         
-        # NICHT sofort löschen - User kann mehrmals downloaden
-        # Cleanup-Thread löscht nach 1 Stunde automatisch
+        # Markiere als downloaded (wird beim nächsten Cleanup gelöscht)
+        mark_file_downloaded(file_id)
         
         return send_file(
             output,
@@ -347,10 +489,22 @@ def download(file_id):
 @app.route('/health', methods=['GET'])
 def health():
     """Health-Check für Render.com"""
+    conn = get_db_connection()
+    cached_files = 0
+    
+    if conn:
+        try:
+            with conn.cursor() as cur:
+                cur.execute("SELECT COUNT(*) FROM translated_files")
+                cached_files = cur.fetchone()[0]
+            conn.close()
+        except:
+            pass
+    
     return jsonify({
         'status': 'ok', 
         'languages': len(LANGUAGES),
-        'cached_files': len(translated_files),
+        'cached_files': cached_files,
         'total_translations': translation_count
     }), 200
 
