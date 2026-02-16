@@ -234,6 +234,8 @@ def translate_with_sse(data, target_lang, target_lang_name):
             'timestamp': datetime.now()
         }
         
+        print(f"✅ Translation complete - file_id created: {file_id}")
+        
         # ==================== WEBHOOK & COUNTER ====================
         global translation_count
         translation_count += 1
@@ -310,7 +312,11 @@ def translate():
 @app.route('/download/<file_id>')
 def download(file_id):
     """Download der übersetzten Datei"""
+    print(f"📥 Download request for file_id: {file_id}")
+    print(f"📊 Current cached files: {list(translated_files.keys())}")
+    
     if file_id not in translated_files:
+        print(f"❌ Download failed - file_id not found: {file_id}")
         return jsonify({'error': 'Datei nicht gefunden oder abgelaufen'}), 404
     
     try:
@@ -318,13 +324,15 @@ def download(file_id):
         data = file_info['data']
         lang_code = file_info['lang_code']
         
+        print(f"✅ Download started - file_id: {file_id}, lang: {lang_code}")
+        
         # JSON erstellen
         output = io.BytesIO()
         output.write(json.dumps(data, indent=4, ensure_ascii=False).encode('utf-8'))
         output.seek(0)
         
-        # Nach Download aus Speicher löschen
-        del translated_files[file_id]
+        # NICHT sofort löschen - User kann mehrmals downloaden
+        # Cleanup-Thread löscht nach 1 Stunde automatisch
         
         return send_file(
             output,
@@ -333,6 +341,7 @@ def download(file_id):
             mimetype='application/json'
         )
     except Exception as e:
+        print(f"❌ Download error: {e}")
         return jsonify({'error': str(e)}), 500
 
 @app.route('/health', methods=['GET'])
