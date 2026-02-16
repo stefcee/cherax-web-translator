@@ -27,7 +27,6 @@
 
 ---
 
-## 👤 Created by Stefc3
 
 ![Creator](https://img.shields.io/badge/Creator-Stefc3-purple?style=for-the-badge&logoColor=white)
 ![Community](https://img.shields.io/badge/Community-Active-success?style=for-the-badge&logo=discord&logoColor=white)
