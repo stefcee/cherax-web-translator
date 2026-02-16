@@ -13,7 +13,7 @@ import uuid
 import threading
 import requests
 import psycopg
-from psycopg2.extras import RealDictCursor
+from psycopg.rows import dict_row
 from datetime import datetime, timedelta
 from flask import Flask, render_template, request, send_file, jsonify, Response
 from deep_translator import GoogleTranslator
@@ -101,7 +101,7 @@ def init_db():
                 ON CONFLICT (id) DO NOTHING
             """)
             
-            # Translated Files Tabelle (NEU!)
+            # Translated Files Tabelle
             cur.execute("""
                 CREATE TABLE IF NOT EXISTS translated_files (
                     file_id VARCHAR(255) PRIMARY KEY,
@@ -128,7 +128,7 @@ def load_counter():
         return 0
     
     try:
-        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+        with conn.cursor(row_factory=dict_row) as cur:
             cur.execute("SELECT count FROM translation_count WHERE id = 1")
             result = cur.fetchone()
             count = result['count'] if result else 0
@@ -188,7 +188,7 @@ def get_translated_file(file_id):
         return None
     
     try:
-        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+        with conn.cursor(row_factory=dict_row) as cur:
             cur.execute("""
                 SELECT data, lang_code, downloaded 
                 FROM translated_files 
@@ -512,4 +512,3 @@ if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
     print(f"🚀 Cherax Translator starting... (Total translations: {translation_count})")
     app.run(host='0.0.0.0', port=port, debug=False)
-
