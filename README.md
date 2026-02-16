@@ -20,10 +20,7 @@
 
 **Need help?** Join our Discord: **[dc.gg/chatify](https://dc.gg/chatify)**
 
-- 💡 Get instant support
-- 📤 Share your translations
-- 👥 Meet other Cherax users
-- 🎁 Early access to updates
+
 
 ---
 
